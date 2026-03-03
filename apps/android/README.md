@@ -168,6 +168,10 @@ More details: `docs/platforms/android.md`.
   - Android 13+ (`API 33+`): `NEARBY_WIFI_DEVICES`
   - Android 12 and below: `ACCESS_FINE_LOCATION` (required for NSD scanning)
 - Foreground service notification (Android 13+): `POST_NOTIFICATIONS`
+- Screen recording (`screen.record`):
+  - `FOREGROUND_SERVICE_MEDIA_PROJECTION` must be declared in the manifest.
+  - `NodeForegroundService` must include `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` when calling `startForeground(...)`.
+  - Why: on modern Android, MediaProjection sessions can fail or drop if the running foreground service type does not include `mediaProjection`.
 - Camera:
   - `CAMERA` for `camera.snap` and `camera.clip`
   - `RECORD_AUDIO` for `camera.clip` when `includeAudio=true`

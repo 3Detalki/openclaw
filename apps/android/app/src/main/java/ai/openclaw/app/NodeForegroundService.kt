@@ -133,7 +133,12 @@ class NodeForegroundService : Service() {
       updateNotification(notification)
       return
     }
-    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    // Screen capture on modern Android requires mediaProjection on the
+    // foreground service type used with startForeground(...).
+    val serviceTypes =
+      ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+    startForeground(NOTIFICATION_ID, notification, serviceTypes)
     didStartForeground = true
   }
 
