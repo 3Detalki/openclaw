@@ -342,6 +342,16 @@ Details: [Security guide](https://docs.openclaw.ai/gateway/security) · [Docker 
 - Link the device: `pnpm openclaw channels login` (stores creds in `~/.openclaw/credentials`).
 - Allowlist who can talk to the assistant via `channels.whatsapp.allowFrom`.
 - If `channels.whatsapp.groups` is set, it becomes a group allowlist; include `"*"` to allow all.
+- Fork override (ops note): the UI page `/channels` shows channel key (`whatsapp`), not plugin id. A fork plugin can be active while the UI still shows "WhatsApp".
+- To keep a fork active across updates, pin plugin selection in config:
+  - `plugins.load.paths`: include your fork plugin path.
+  - `plugins.entries.whatsapp.enabled=false`: disable bundled plugin.
+  - `plugins.entries.whatsapp-fork.enabled=true`: enable fork plugin.
+  - Optional hardening: use `plugins.allow` to allow only approved plugin ids (including the fork id).
+- After every update/restart, run a quick check:
+  - `openclaw plugins list` and confirm bundled `whatsapp` is disabled and fork is enabled.
+  - `openclaw gateway status` and confirm gateway health is `ok`.
+  - `openclaw channels status --channel whatsapp` (or a smoke message) to verify live session.
 
 ### [Telegram](https://docs.openclaw.ai/channels/telegram)
 
