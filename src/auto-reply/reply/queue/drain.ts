@@ -15,7 +15,13 @@ import type { FollowupRun } from "./types.js";
 
 // Persists the most recent runFollowup callback per queue key so that
 // enqueueFollowupRun can restart a drain that finished and deleted the queue.
-const FOLLOWUP_RUN_CALLBACKS = new Map<string, (run: FollowupRun) => Promise<void>>();
+const _g = globalThis as typeof globalThis & {
+  __openclaw_followup_drain_callbacks__?: Map<string, (run: FollowupRun) => Promise<void>>;
+};
+const FOLLOWUP_RUN_CALLBACKS = (_g.__openclaw_followup_drain_callbacks__ ??= new Map<
+  string,
+  (run: FollowupRun) => Promise<void>
+>());
 
 export function clearFollowupDrainCallback(key: string): void {
   FOLLOWUP_RUN_CALLBACKS.delete(key);
