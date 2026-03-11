@@ -18,7 +18,17 @@ export const DEFAULT_QUEUE_DEBOUNCE_MS = 1000;
 export const DEFAULT_QUEUE_CAP = 20;
 export const DEFAULT_QUEUE_DROP: QueueDropPolicy = "summarize";
 
-export const FOLLOWUP_QUEUES = new Map<string, FollowupQueueState>();
+/**
+ * Share followup queues across bundled chunks so busy-session enqueue/drain
+ * logic observes one queue registry per process.
+ */
+const _g = globalThis as typeof globalThis & {
+  __openclaw_followup_queues__?: Map<string, FollowupQueueState>;
+};
+export const FOLLOWUP_QUEUES = (_g.__openclaw_followup_queues__ ??= new Map<
+  string,
+  FollowupQueueState
+>());
 
 export function getExistingFollowupQueue(key: string): FollowupQueueState | undefined {
   const cleaned = key.trim();
