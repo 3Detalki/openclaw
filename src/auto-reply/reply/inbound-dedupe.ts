@@ -6,10 +6,17 @@ import type { MsgContext } from "../templating.js";
 const DEFAULT_INBOUND_DEDUPE_TTL_MS = 20 * 60_000;
 const DEFAULT_INBOUND_DEDUPE_MAX = 5000;
 
-const inboundDedupeCache = createDedupeCache({
+/**
+ * Keep inbound dedupe shared across bundled chunks so the same provider
+ * message cannot bypass dedupe by entering through a different chunk copy.
+ */
+const _g = globalThis as typeof globalThis & {
+  __openclaw_inbound_dedupe_cache__?: DedupeCache;
+};
+const inboundDedupeCache = (_g.__openclaw_inbound_dedupe_cache__ ??= createDedupeCache({
   ttlMs: DEFAULT_INBOUND_DEDUPE_TTL_MS,
   maxSize: DEFAULT_INBOUND_DEDUPE_MAX,
-});
+}));
 
 const normalizeProvider = (value?: string | null) => value?.trim().toLowerCase() || "";
 
