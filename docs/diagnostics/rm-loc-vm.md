@@ -34,9 +34,14 @@ The live VM is considered correct only if all of the following stay true:
 
 ## Known footgun
 
-There is a stale nested directory at `/home/openclaw/.openclaw/.openclaw`.
+A stale nested state directory previously existed at `/home/openclaw/.openclaw/.openclaw`.
+It was moved out of the active state tree on `2026-03-12` to:
 
-- Do not point `OPENCLAW_STATE_DIR` at that nested path.
+- `/home/openclaw/update-backups/openclaw-nested-state-20260312-fix`
+
+Rules:
+
+- Do not recreate or reuse the nested path as `OPENCLAW_STATE_DIR`.
 - Do not treat Control UI `pairing required` on a fresh browser as a Gateway outage.
 - First separate auth or pairing issues from actual Gateway health issues.
 
@@ -81,5 +86,6 @@ Post-upgrade validation passed:
 - `openclaw.service` stayed active after restart
 - `Telegram default` probed healthy
 - `WhatsApp default` probed as linked, running, and connected
+- stale nested state was moved from the active tree into `update-backups`
 
 If the external page shows `Health Offline` while the local checks above pass, treat it as a UI auth or pairing problem first, not as a service outage.
