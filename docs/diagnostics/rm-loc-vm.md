@@ -31,6 +31,11 @@ The live VM is considered correct only if all of the following stay true:
 - The Gateway binds to loopback on port `18789`.
 - `plugins.load.paths` is empty in live config unless a tracked repo change says otherwise.
 - Builtin `whatsapp` stays enabled. No local WhatsApp fork overlay should be loaded in production.
+- `session.sendPolicy.default` stays `deny`, with explicit allow rules for:
+  - `agent:main:main`
+  - `agent:main:subagent:`
+  - `agent:main:telegram:default:`
+  - `agent:main:whatsapp:default:direct:+77762851993`
 
 ## Known footgun
 
@@ -87,5 +92,21 @@ Post-upgrade validation passed:
 - `Telegram default` probed healthy
 - `WhatsApp default` probed as linked, running, and connected
 - stale nested state was moved from the active tree into `update-backups`
+
+## 2026-03-12 session policy fix
+
+The Control UI main chat route uses session key `agent:main:main`.
+
+Because the deployment uses `session.sendPolicy.default = deny`, the UI chat will fail with:
+
+- `GatewayRequestError: send blocked by session policy`
+
+unless `agent:main:main` is explicitly allowed.
+
+The live VM now includes an allow rule for:
+
+- `rawKeyPrefix = agent:main:main`
+
+If this rule is removed, the Web Control UI can still open history but cannot send messages in the main chat session.
 
 If the external page shows `Health Offline` while the local checks above pass, treat it as a UI auth or pairing problem first, not as a service outage.
