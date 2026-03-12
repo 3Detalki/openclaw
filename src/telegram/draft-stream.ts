@@ -21,11 +21,23 @@ type TelegramSendMessageDraft = (
   },
 ) => Promise<unknown>;
 
-let nextDraftId = 0;
+/**
+ * Keep draft-id allocation shared across bundled chunks so concurrent preview
+ * lanes do not accidentally reuse draft ids when code-split entries coexist.
+ */
+const _g = globalThis as typeof globalThis & {
+  __openclaw_telegram_draft_stream_state__?: {
+    nextDraftId: number;
+  };
+};
+const draftStreamState = (_g.__openclaw_telegram_draft_stream_state__ ??= {
+  nextDraftId: 0,
+});
 
 function allocateTelegramDraftId(): number {
-  nextDraftId = nextDraftId >= TELEGRAM_DRAFT_ID_MAX ? 1 : nextDraftId + 1;
-  return nextDraftId;
+  draftStreamState.nextDraftId =
+    draftStreamState.nextDraftId >= TELEGRAM_DRAFT_ID_MAX ? 1 : draftStreamState.nextDraftId + 1;
+  return draftStreamState.nextDraftId;
 }
 
 function resolveSendMessageDraftApi(api: Bot["api"]): TelegramSendMessageDraft | undefined {
@@ -441,3 +453,9 @@ export function createTelegramDraftStream(params: {
     sendMayHaveLanded: () => messageSendAttempted && typeof streamMessageId !== "number",
   };
 }
+
+export const __testing = {
+  resetTelegramDraftStreamForTests() {
+    draftStreamState.nextDraftId = 0;
+  },
+};
