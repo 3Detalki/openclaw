@@ -7,7 +7,17 @@
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_ENTRIES = 5000;
 
-const threadParticipation = new Map<string, number>();
+/**
+ * Keep Slack thread participation shared across bundled chunks so thread
+ * auto-reply gating does not diverge between prepare/dispatch call paths.
+ */
+const _g = globalThis as typeof globalThis & {
+  __openclaw_slack_thread_participation__?: Map<string, number>;
+};
+const threadParticipation = (_g.__openclaw_slack_thread_participation__ ??= new Map<
+  string,
+  number
+>());
 
 function makeKey(accountId: string, channelId: string, threadTs: string): string {
   return `${accountId}:${channelId}:${threadTs}`;
