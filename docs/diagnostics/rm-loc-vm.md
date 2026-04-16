@@ -10,16 +10,17 @@ title: "rm.loc VM"
 
 This repository is the source of truth for the `openclaw.rm.loc` deployment.
 
-Target live state as of `2026-03-12`:
+Target live state as of `2026-04-16`:
 
 - Public entrypoint: `https://openclaw.rm.loc/`
 - Runtime host: VM `openclaw-secure`
 - Gateway service: `openclaw.service`
-- Installed package: `openclaw@2026.3.8`
+- Installed package: `openclaw@2026.4.14`
 - Bind address: `127.0.0.1:18789`
 - Active state dir: `/home/openclaw/.openclaw`
 - WhatsApp channel: builtin bridge only
 - Telegram channel: builtin bridge only
+- SIP calling skill: external workspace repo `~/.openclaw/workspace/skills/sip-mvp-bridge`
 
 ## Service invariants
 
@@ -74,7 +75,7 @@ openclaw config get plugins.entries.whatsapp.enabled
 
 Expected results:
 
-- `openclaw --version` prints `2026.3.8`
+- `openclaw --version` prints `2026.4.14`
 - `systemctl is-active` prints `active`
 - local `curl` returns `200`
 - `channels status --probe` reports `Gateway reachable`
@@ -110,3 +111,36 @@ The live VM now includes an allow rule for:
 If this rule is removed, the Web Control UI can still open history but cannot send messages in the main chat session.
 
 If the external page shows `Health Offline` while the local checks above pass, treat it as a UI auth or pairing problem first, not as a service outage.
+
+## 2026-04-16 SIP outbound fix
+
+The rm.loc deployment uses an external workspace skill for SIP calling:
+
+- `~/.openclaw/workspace/skills/sip-mvp-bridge`
+
+That skill is separate from this repository and separate from the bundled `voice-call` plugin.
+
+Observed failure on `2026-04-16`:
+
+- inbound SIP listen service was healthy and kept `1126` registered
+- ad hoc outbound `call` runs failed with `EADDRINUSE 0.0.0.0:5066`
+- root cause: `sip-mvp-bridge-listen.service` owned SIP port `5066`, and outbound bridge runs tried to bind the same local SIP port
+
+Validated fix:
+
+- `call` mode now uses separate defaults:
+  - `SIP_CALL_LOCAL_PORT=5068`
+  - `SIP_CALL_RTP_PORT=4002`
+- `listen` mode remains on:
+  - `SIP_LOCAL_PORT=5066`
+  - `SIP_RTP_PORT=4000`
+
+Manual verification on `2026-04-16`:
+
+- `node scripts/sip-mvp-bridge.js call --to 1125 --say ...` reached `200 OK`, answered, and played TTS
+- `node scripts/sip-mvp-bridge.js call --to +77762851993 --say ...` reached `200 OK`, answered, and played TTS
+
+Operational rule:
+
+- when diagnosing SIP on rm.loc, treat Asterisk registration health and outbound port collisions as separate checks
+- if registration is green but outbound calls fail immediately, check for `EADDRINUSE` on `5066` first
