@@ -23,6 +23,9 @@ Target live state as of `2026-04-16`:
 - SIP calling skill: external workspace repo `~/.openclaw/workspace/skills/sip-mvp-bridge`
 - WhatsApp archive ingest: external workspace repo `~/.openclaw/workspace/integrations/wa-greenapi-ingest-skill`
 - WhatsApp archive search skill: external workspace repo `~/.openclaw/workspace/skills/wa-memory-search`
+- Obsidian journal skill: external workspace repo `~/.openclaw/workspace/skills/obsidian-journal`
+- Obsidian synced vault: `/home/openclaw/.openclaw/workspace/obsidian-vaults/my_obsidian`
+- Obsidian sync service: `obsidian-headless-sync.service`
 
 ## Service invariants
 
@@ -172,3 +175,26 @@ Important operational detail:
 - the legacy hook archive file `~/.openclaw/workspace/data/wa-archive/messages.jsonl` stopped being the active source of truth
 - by `2026-04-16`, it was stale while the SQLite archive was still receiving fresh data
 - when debugging WhatsApp archive health on rm.loc, verify the SQLite DB and the GreenAPI ingest runtime first, not the old `wa-archive` hook
+
+## 2026-04-16 Obsidian journal sync note
+
+The rm.loc deployment now keeps the private Obsidian vault on the VM through Obsidian Headless Sync.
+
+Live components:
+
+- synced vault path: `/home/openclaw/.openclaw/workspace/obsidian-vaults/my_obsidian`
+- continuous sync service: `obsidian-headless-sync.service`
+- journal skill repo: `~/.openclaw/workspace/skills/obsidian-journal`
+
+Validated live state on `2026-04-16`:
+
+- `ob sync-setup --vault my_obsidian` completed successfully against the remote Obsidian Sync vault
+- initial full download completed and included `Ежедневник`
+- `obsidian-headless-sync.service` was enabled in systemd and reached `active (running)`
+- the synced vault contains the expected daily-note tree under `Ежедневник`
+
+Operational rule:
+
+- the VM must use the synced Linux vault path, not the Windows path `D:\Obsidian\my_obsidian`
+- if journal writes stop working, first check `systemctl status obsidian-headless-sync.service`
+- only if the sync service is healthy should you debug the skill logic itself
