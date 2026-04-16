@@ -21,6 +21,8 @@ Target live state as of `2026-04-16`:
 - WhatsApp channel: builtin bridge only
 - Telegram channel: builtin bridge only
 - SIP calling skill: external workspace repo `~/.openclaw/workspace/skills/sip-mvp-bridge`
+- WhatsApp archive ingest: external workspace repo `~/.openclaw/workspace/integrations/wa-greenapi-ingest-skill`
+- WhatsApp archive search skill: external workspace repo `~/.openclaw/workspace/skills/wa-memory-search`
 
 ## Service invariants
 
@@ -144,3 +146,29 @@ Operational rule:
 
 - when diagnosing SIP on rm.loc, treat Asterisk registration health and outbound port collisions as separate checks
 - if registration is green but outbound calls fail immediately, check for `EADDRINUSE` on `5066` first
+
+## 2026-04-16 WhatsApp GreenAPI note
+
+The rm.loc deployment currently uses two separate external workspace components for WhatsApp archive work:
+
+- ingest runtime: `~/.openclaw/workspace/integrations/wa-greenapi-ingest-skill`
+- search skill: `~/.openclaw/workspace/skills/wa-memory-search`
+
+They are not the same thing:
+
+- `wa-greenapi-ingest-skill` pulls and normalizes GREEN-API data into the live SQLite archive
+- `wa-memory-search` only reads the SQLite archive for lookup and semantic search
+
+Validated live state on `2026-04-16`:
+
+- live archive DB: `/home/openclaw/.openclaw/workspace/wa_archive.db`
+- `ingest-once --source queue --dry-run` completed successfully with no errors
+- `ingest-once --source history --dry-run --max-events 3` completed successfully and normalized fresh events
+- `embed_missing.py --db /home/openclaw/.openclaw/workspace/wa_archive.db --dry-run` reported no missing embeddings
+- `./scripts/smoke_check.sh` in `wa-greenapi-ingest-skill` passed after syncing minitests with the current `_enrich_media_and_transcript(...)` signature
+
+Important operational detail:
+
+- the legacy hook archive file `~/.openclaw/workspace/data/wa-archive/messages.jsonl` stopped being the active source of truth
+- by `2026-04-16`, it was stale while the SQLite archive was still receiving fresh data
+- when debugging WhatsApp archive health on rm.loc, verify the SQLite DB and the GreenAPI ingest runtime first, not the old `wa-archive` hook
