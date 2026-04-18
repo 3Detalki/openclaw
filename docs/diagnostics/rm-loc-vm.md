@@ -222,9 +222,9 @@ Expected result:
 
 Audio transcription fallback as of `2026-04-18`:
 
-- `OPENAI_API_KEY` is still not present in the skill `.env`, in `/etc/openclaw/openclaw.env`, or in the live `openclaw.service` process environment
-- that is no longer fatal for WhatsApp audio enrich runs because the skill fallback chain is now:
+- direct `OPENAI_API_KEY` is still not required for WhatsApp audio enrich correctness because the skill fallback chain is now:
   `GREENAPI_TRANSCRIBE_MODEL` -> `whisper-1` -> local whisper -> `openclaw capability audio transcribe`
+- the host now also carries direct provider credentials in `/etc/openclaw/openclaw.env` for embeddings and semantic search, but audio must keep working even if that direct OpenAI path is unavailable
 - the final OpenClaw fallback reuses the live host `tools.media.audio` config instead of moving the jobs back into OpenClaw cron
 - WhatsApp voice files stored as `.oga` are normalized to `.ogg` before provider transcription, because the provider audio endpoints accept Ogg/Opus content but reject the `.oga` filename extension
 - the live rm.loc `tools.media.audio` order currently resolves to:
@@ -267,6 +267,44 @@ Validated live state after redeploy on `2026-04-18`:
 Operational rule:
 
 - if WhatsApp audio enrich ever diverges again between manual runs and systemd runs, compare `OPENCLAW_HOME` and `OPENCLAW_STATE_DIR` first before debugging GreenAPI or STT providers
+
+## 2026-04-18 WhatsApp embeddings and semantic search fix
+
+Observed regression on `2026-04-18`:
+
+- `wa-greenapi-embeddings-backfill.service` was failing on rm.loc before it could finish the latest WhatsApp archive rows
+- the first failure mode was missing direct provider credentials
+- after restoring credentials, the next failure mode was `sqlite3.OperationalError: database is locked`
+
+Validated root causes:
+
+- `/etc/openclaw/openclaw.env` did not contain `OPENAI_API_KEY`, so `embed_missing.py` could not call the embeddings endpoint
+- `openclaw.service.d/30-canonical-state.conf` had reset `EnvironmentFile=`, so the running OpenClaw gateway no longer inherited `/etc/openclaw/openclaw.env`
+- `scripts/embed_missing.py` held a long-lived SQLite write transaction across provider round-trips, which made it collide with live ingest/enrich writers on the same archive DB
+
+Tracked fixes:
+
+- `/etc/openclaw/openclaw.env` now carries the direct provider credentials needed by the embeddings backfill job
+- `openclaw.service.d/50-provider-env.conf` restores `EnvironmentFile=/etc/openclaw/openclaw.env` for the live gateway process
+- the external `wa-greenapi-ingest-skill` repo now commits each embedding row immediately and honors `WA_EMBED_SQLITE_BUSY_TIMEOUT_MS`, so backfill does not hold the SQLite write lock while it waits on the provider for the next row
+
+Validated live state after redeploy on `2026-04-18`:
+
+- gateway process env now includes the provider key and `openclaw.service` is listening again on `127.0.0.1:18789`
+- `/home/openclaw/.openclaw/workspace/wa_archive.db` now reports:
+  - `messages_total=5668`
+  - `embeddings_total=5668`
+  - `missing_embedding_candidates=0`
+- `wa-memory-search` semantic lookup is healthy against the same live archive:
+  - query `царь три сына` returns row `5720` with Yuri Yakovenko's fresh voice transcript
+  - query `голосовое сообщение для Данила 1 2 3` returns row `5718` with the Danil test voice transcript
+
+Operational rule:
+
+- `wa-greenapi-ingest-skill` and `wa-memory-search` remain separate repos with separate responsibilities
+- ingest owns normalization and writes into `/home/openclaw/.openclaw/workspace/wa_archive.db`
+- search owns lookup and semantic retrieval against that same DB
+- if semantic search breaks again, check both the shared archive DB counts and whether `openclaw.service` still imports `/etc/openclaw/openclaw.env`
 
 ## 2026-04-16 Obsidian journal sync note
 
