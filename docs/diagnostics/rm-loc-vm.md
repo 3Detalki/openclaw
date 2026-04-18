@@ -194,6 +194,7 @@ Tracked source of truth now lives in the ingest skill repo:
 Live timers on the VM:
 
 - `wa-greenapi-ingest-queue.timer`
+- `wa-greenapi-history-reconcile.timer`
 - `wa-greenapi-embeddings-backfill.timer`
 - `wa-greenapi-enrich-media.timer`
 
@@ -217,7 +218,7 @@ openclaw cron list
 
 Expected result:
 
-- the three `wa-greenapi-*` timers are active
+- the four `wa-greenapi-*` timers are active
 - the old WhatsApp archive OpenClaw cron jobs are absent or disabled
 
 Audio transcription fallback as of `2026-04-18`:
@@ -305,6 +306,59 @@ Operational rule:
 - ingest owns normalization and writes into `/home/openclaw/.openclaw/workspace/wa_archive.db`
 - search owns lookup and semantic retrieval against that same DB
 - if semantic search breaks again, check both the shared archive DB counts and whether `openclaw.service` still imports `/etc/openclaw/openclaw.env`
+
+## 2026-04-18 WhatsApp full-history reconcile fix
+
+Observed regression on `2026-04-18`:
+
+- the live rm.loc scheduler only ran queue ingest, enrich, and embeddings timers
+- queue ingest only sees fresh GREEN-API notifications after the timer starts; it does not backfill older chats automatically
+- chat `77085803915@c.us` existed in GREEN-API and `getChatHistory(...)`, but had zero rows in `/home/openclaw/.openclaw/workspace/wa_archive.db`
+
+Validated root causes:
+
+- `wa-greenapi-ingest-queue.timer` had only been active since `2026-04-18 09:31 UTC`, while the missing chat's latest messages were from `2026-04-15 08:27 UTC` to `2026-04-15 08:33 UTC`
+- there was no periodic systemd job running `ingest-full-history` against the full WhatsApp chat universe
+- the tracked `ingest_full_history_once(...)` logic was also truncating refreshed discovery to the current `max_chats` processing slice, so even a future timer would have learned only the first `N` chats instead of all discovered chats
+
+Tracked fixes:
+
+- the external `wa-greenapi-ingest-skill` repo now keeps the full refreshed `chat_order` in state and reports coverage counters:
+  - `db_known_chats_before/after`
+  - `chat_order_total`
+  - `completed_chats_total`
+  - `remaining_chats_total`
+  - `coverage_missing_chats_before/after`
+- the skill repo now ships `scripts/runners/wa_history_reconcile.sh`
+- rm.loc now has `wa-greenapi-history-reconcile.service` + `wa-greenapi-history-reconcile.timer`
+- the reconcile runner refreshes the full chat list on each run, then processes a bounded slice without truncating discovery itself
+
+Validated live state after redeploy on `2026-04-18`:
+
+- `systemctl status wa-greenapi-history-reconcile.timer` is now `active (waiting)`
+- the live state file is `/home/openclaw/.openclaw/workspace/.greenapi_ingest_state.json`
+- a manual reconcile pass on rm.loc completed with:
+  - `inserted=143`
+  - `chats_processed=48`
+  - `db_known_chats_before=613`
+  - `db_known_chats_after=618`
+  - `chat_order_total=1917`
+  - `coverage_missing_chats_before=1304`
+  - `coverage_missing_chats_after=1299`
+- chat `77085803915@c.us` now has `54` rows in the live archive
+- the latest imported rows for that peer now include:
+  - `2026-04-15T08:33:24+00:00` inbound `👌`
+  - `2026-04-15T08:30:42+00:00` outbound `Спасибо, как подпишут скину Вам`
+  - `2026-04-15T08:30:18+00:00` inbound `Данные в авр достаточно 👍`
+- after two explicit embeddings backfill passes following that history import:
+  - `missing_embeddings=0`
+  - `peer_missing_embeddings=0`
+
+Operational rule:
+
+- `wa-greenapi-ingest-queue.timer` by itself is not enough to guarantee WhatsApp archive completeness
+- keep `wa-greenapi-history-reconcile.timer` enabled if the requirement is “all chats eventually land in the local archive automatically”
+- when validating coverage, check the live state file and the reconcile JSON counters, not only queue timer health
 
 ## 2026-04-16 Obsidian journal sync note
 
