@@ -231,6 +231,43 @@ Audio transcription fallback as of `2026-04-18`:
   `groq/whisper-large-v3-turbo` -> `openai/gpt-4o-mini-transcribe`
 - treat direct OpenAI key absence as a cost/latency preference issue, not as a scheduler regression
 
+## 2026-04-18 WhatsApp audio service fix
+
+Observed regression on `2026-04-18`:
+
+- manual `greenapi_ingest.py ingest-once --source history --max-events 8` runs transcribed the latest WhatsApp voice notes successfully
+- the systemd `wa-greenapi-enrich-media.service` path kept failing the same files and previously could downgrade a good archive row back to `transcript_unavailable`
+
+Validated root causes:
+
+- the skill upsert path allowed a later failed audio retry to overwrite an already successful `[audio transcript] ...` row for the same `source_message_id`
+- the rendered `wa-greenapi-*` systemd services used the wrong host layout:
+  - wrong: `OPENCLAW_HOME=/home/openclaw/.openclaw`
+  - correct: `OPENCLAW_HOME=/home/openclaw`
+  - correct: `OPENCLAW_STATE_DIR=/home/openclaw/.openclaw`
+- that wrong `OPENCLAW_HOME` broke the final fallback path that shells out to `openclaw capability audio transcribe`
+
+Tracked fixes now live in the external skill repo:
+
+- successful audio transcripts are preserved if a later retry fails
+- `wa_enrich_media_docs_audio.sh` defaults to `WA_GREENAPI_ENRICH_MAX_EVENTS=8`
+- all three tracked systemd service templates now use the host OpenClaw home/state split above
+
+Validated live state after redeploy on `2026-04-18`:
+
+- `wa-greenapi-enrich-media.service` completed with:
+  - `received=8`
+  - `updated=5`
+  - `transcribed=5`
+- Danil test voice row at `ts=2026-04-18T10:54:08+00:00` in `/home/openclaw/.openclaw/workspace/wa_archive.db` now stores:
+  - text: `[audio transcript] Голосовое сообщение для Данила 123.`
+  - `transcription.ok=true`
+  - `engine=openclaw:capability-audio`
+
+Operational rule:
+
+- if WhatsApp audio enrich ever diverges again between manual runs and systemd runs, compare `OPENCLAW_HOME` and `OPENCLAW_STATE_DIR` first before debugging GreenAPI or STT providers
+
 ## 2026-04-16 Obsidian journal sync note
 
 The rm.loc deployment now keeps the private Obsidian vault on the VM through Obsidian Headless Sync.
