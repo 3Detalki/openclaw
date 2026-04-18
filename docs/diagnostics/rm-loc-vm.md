@@ -220,11 +220,15 @@ Expected result:
 - the three `wa-greenapi-*` timers are active
 - the old WhatsApp archive OpenClaw cron jobs are absent or disabled
 
-Known direct-API gap as of `2026-04-18`:
+Audio transcription fallback as of `2026-04-18`:
 
-- `OPENAI_API_KEY` is not currently present in the skill `.env`, in `/etc/openclaw/openclaw.env`, or in the live `openclaw.service` process environment
-- because of that, the scheduler migration is successful, but `wa-greenapi-enrich-media.service` still logs transcription warnings such as `OPENAI_API_KEY is not set`
-- treat that as a separate provider-credentials task, not as a reason to move these jobs back into OpenClaw cron
+- `OPENAI_API_KEY` is still not present in the skill `.env`, in `/etc/openclaw/openclaw.env`, or in the live `openclaw.service` process environment
+- that is no longer fatal for WhatsApp audio enrich runs because the skill fallback chain is now:
+  `GREENAPI_TRANSCRIBE_MODEL` -> `whisper-1` -> local whisper -> `openclaw capability audio transcribe`
+- the final OpenClaw fallback reuses the live host `tools.media.audio` config instead of moving the jobs back into OpenClaw cron
+- the live rm.loc `tools.media.audio` order currently resolves to:
+  `groq/whisper-large-v3-turbo` -> `openai/gpt-4o-mini-transcribe`
+- treat direct OpenAI key absence as a cost/latency preference issue, not as a scheduler regression
 
 ## 2026-04-16 Obsidian journal sync note
 
