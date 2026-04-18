@@ -360,6 +360,42 @@ Operational rule:
 - keep `wa-greenapi-history-reconcile.timer` enabled if the requirement is “all chats eventually land in the local archive automatically”
 - when validating coverage, check the live state file and the reconcile JSON counters, not only queue timer health
 
+## 2026-04-18 WhatsApp historical audio backfill fix
+
+Observed limitation on `2026-04-18`:
+
+- full-history reconcile correctly imported previously missing chats, but it intentionally used `--no-download-media`
+- as a result, older voice rows still existed in the archive only as compact placeholders like `download_skipped`, so OpenClaw search could answer from normal text rows while still having no transcript text for those historical voice notes
+- chat `77085803915@c.us` was the concrete validation case
+
+Tracked fix in the external ingest skill repo:
+
+- new CLI path: `greenapi_ingest.py reprocess-skipped-media`
+- new runner: `scripts/runners/wa_historical_media_backfill.sh`
+- new systemd units on rm.loc:
+  - `wa-greenapi-media-backfill.service`
+  - `wa-greenapi-media-backfill.timer`
+- the production runner intentionally uses `reprocess-skipped-media --audio-only`
+- when a historical row text changes, the job now deletes that row's embedding so the standard embeddings backfill job reindexes the fresh transcript instead of leaving a vector for the old placeholder text
+- the job shares the same `wa-greenapi-ingest` flock with queue ingest, history reconcile, and latest-media enrich, so deterministic archive jobs do not hammer GreenAPI and SQLite concurrently
+
+Validated live state after deploy on `2026-04-18`:
+
+- `wa-greenapi-media-backfill.timer` is enabled and waiting in systemd
+- for chat `77085803915@c.us`, historical voice backlog was reduced from `25` placeholder candidates to `0` remaining audio candidates
+- the same chat now stores `21` `[audio transcript] ...` rows in `/home/openclaw/.openclaw/workspace/wa_archive.db`
+- after forcing the standard embeddings backfill service once more, both counters returned to:
+  - `peer_missing_embeddings=0`
+  - `global_missing_embeddings=0`
+- the same chat still has a few non-audio text-first rows (image/document/plain-text placeholders), but that is now separate from the historical voice-transcript problem
+
+Operational rule:
+
+- distinguish voice backlog from generic media backlog
+- the meaningful voice-health check is not “does this chat still have any `download_skipped` rows” but rather:
+  - are there any `audio_only` backfill candidates left for that peer
+- for manual ops, prefer `systemctl start wa-greenapi-embeddings-backfill.service` over running `python3 scripts/embed_missing.py` naked from an `openclaw` shell, because the service already imports the required provider env from `/etc/openclaw/openclaw.env`
+
 ## 2026-04-16 Obsidian journal sync note
 
 The rm.loc deployment now keeps the private Obsidian vault on the VM through Obsidian Headless Sync.
