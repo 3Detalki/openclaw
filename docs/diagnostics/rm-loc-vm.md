@@ -226,6 +226,7 @@ Audio transcription fallback as of `2026-04-18`:
 - that is no longer fatal for WhatsApp audio enrich runs because the skill fallback chain is now:
   `GREENAPI_TRANSCRIBE_MODEL` -> `whisper-1` -> local whisper -> `openclaw capability audio transcribe`
 - the final OpenClaw fallback reuses the live host `tools.media.audio` config instead of moving the jobs back into OpenClaw cron
+- WhatsApp voice files stored as `.oga` are normalized to `.ogg` before provider transcription, because the provider audio endpoints accept Ogg/Opus content but reject the `.oga` filename extension
 - the live rm.loc `tools.media.audio` order currently resolves to:
   `groq/whisper-large-v3-turbo` -> `openai/gpt-4o-mini-transcribe`
 - treat direct OpenAI key absence as a cost/latency preference issue, not as a scheduler regression
