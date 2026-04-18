@@ -176,6 +176,56 @@ Important operational detail:
 - by `2026-04-16`, it was stale while the SQLite archive was still receiving fresh data
 - when debugging WhatsApp archive health on rm.loc, verify the SQLite DB and the GreenAPI ingest runtime first, not the old `wa-archive` hook
 
+## 2026-04-18 WhatsApp scheduling note
+
+The rm.loc deployment no longer uses OpenClaw `cron` agent turns for the three deterministic WhatsApp archive jobs.
+
+Reason:
+
+- those jobs only wrapped fixed shell commands
+- the wrapper burned OpenAI/OpenClaw tokens before launching Python that could already run directly
+
+Tracked source of truth now lives in the ingest skill repo:
+
+- runners: `~/.openclaw/workspace/integrations/wa-greenapi-ingest-skill/scripts/runners/`
+- systemd templates: `~/.openclaw/workspace/integrations/wa-greenapi-ingest-skill/ops/systemd/`
+- install helper: `~/.openclaw/workspace/integrations/wa-greenapi-ingest-skill/ops/systemd/install-wa-greenapi-timers.sh`
+
+Live timers on the VM:
+
+- `wa-greenapi-ingest-queue.timer`
+- `wa-greenapi-embeddings-backfill.timer`
+- `wa-greenapi-enrich-media.timer`
+
+Operational rule:
+
+- do not recreate these jobs as OpenClaw `cron` agent turns
+- if cadence or command flags must change, edit the tracked runner or timer templates in the skill repo and redeploy them with the installer
+- direct API usage inside the Python jobs is still expected:
+  - `scripts/embed_missing.py` calls OpenAI embeddings
+  - `scripts/greenapi_ingest.py` may call OpenAI transcription during enrich runs
+- the rendered services also import `/etc/openclaw/openclaw.env` so they can reuse the same non-skill environment as `openclaw.service` when that file contains provider credentials
+
+Minimum verification set after any change:
+
+```bash
+systemctl list-timers 'wa-greenapi-*'
+systemctl status wa-greenapi-ingest-queue.timer --no-pager
+journalctl -u wa-greenapi-enrich-media.service -n 100 --no-pager
+openclaw cron list
+```
+
+Expected result:
+
+- the three `wa-greenapi-*` timers are active
+- the old WhatsApp archive OpenClaw cron jobs are absent or disabled
+
+Known direct-API gap as of `2026-04-18`:
+
+- `OPENAI_API_KEY` is not currently present in the skill `.env`, in `/etc/openclaw/openclaw.env`, or in the live `openclaw.service` process environment
+- because of that, the scheduler migration is successful, but `wa-greenapi-enrich-media.service` still logs transcription warnings such as `OPENAI_API_KEY is not set`
+- treat that as a separate provider-credentials task, not as a reason to move these jobs back into OpenClaw cron
+
 ## 2026-04-16 Obsidian journal sync note
 
 The rm.loc deployment now keeps the private Obsidian vault on the VM through Obsidian Headless Sync.
